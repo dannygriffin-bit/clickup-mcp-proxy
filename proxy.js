@@ -3,9 +3,8 @@ import http from "http";
 import { spawn } from "child_process";
 import httpProxy from "http-proxy";
 
-// ---------- Config ----------
-const INTERNAL_PORT = 10000;                  // MCP child binds here (localhost only)
-const PUBLIC_PORT = process.env.PORT || 3000; // Render provides PORT for public listener
+const INTERNAL_PORT = 10000;                  // child listens here (localhost-only)
+const PUBLIC_PORT  = process.env.PORT || 3000; // Render injects PORT
 
 console.log("ENV sanity:", {
   HAS_API_KEY: !!process.env.CLICKUP_API_KEY,
@@ -14,16 +13,18 @@ console.log("ENV sanity:", {
   PUBLIC_PORT: String(PUBLIC_PORT),
 });
 
-// ---------- Start MCP child (HTTP + SSE) ----------
-console.log("[child] starting ClickUp MCP (taazkareem 0.7.2, http+sse) …");
+// ---- Start the ClickUp MCP child (the server we're proxying to) ----
+// Using the package's default behavior (which has shown /sse and /mcp)
+// No extra flags; we just pin HOST/PORT in env.
+console.log("[child] starting ClickUp MCP (taazkareem latest) …");
 const child = spawn(
   "bash",
-  ["-lc", "npx -y @taazkareem/clickup-mcp-server@0.7.2 --http --sse"],
+  ["-lc", "npx -y @taazkareem/clickup-mcp-server@latest"],
   {
     env: {
       ...process.env,
-      PORT: String(INTERNAL_PORT), // child listens on 127.0.0.1:10000
       HOST: "127.0.0.1",
+      PORT: String(INTERNAL_PORT),
       ENABLE_SSE: "true",
     },
     stdio: "inherit",
@@ -35,13 +36,13 @@ child.on("exit", (code) => {
   console.error(`[child] exited with code: ${code}`);
 });
 
-// ---------- Reverse proxy (hardened) ----------
+// ---- Reverse proxy to the child on localhost:10000 ----
 const proxy = httpProxy.createProxyServer({
   target: `http://127.0.0.1:${INTERNAL_PORT}`,
   changeOrigin: true,
   ws: true,
-  proxyTimeout: 600000, // 10 min
-  timeout: 600000,      // idle socket timeout
+  proxyTimeout: 600000,
+  timeout: 600000,
 });
 
 proxy.on("error", (err, req, res) => {
@@ -54,25 +55,58 @@ proxy.on("error", (err, req, res) => {
   }
 });
 
-// ---------- Public HTTP server ----------
-const server = http.createServer((req, res) => {
-  // 1) direct connectivity check (doesn't depend on child)
+// ---- Public server (what Render hits) ----
+const server = http.createServer(async (req, res) => {
+  // Tiny landing page so Render's port scan sees something immediately
+  if (req.url === "/") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    return res.end(`
+      <h1>ClickUp MCP Proxy</h1>
+      <ul>
+        <li><a href="/ping">/ping</a></li>
+        <li><a href="/health">/health</a></li>
+        <li><a href="/test-sse">/test-sse (built-in)</a></li>
+        <li><a href="/sse">/sse (proxied to child)</a></li>
+      </ul>
+    `);
+  }
+
+  // Simple connectivity checks
   if (req.url === "/ping") {
     console.log("[ping] hit");
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end("pong");
   }
 
-  // 2) always-OK health so Render passes health checks
+  // Always-OK health for Render
   if (req.url === "/health") {
+    res.writeHead(200, { "content-type": "text/plain" });
     return res.end("ok");
   }
 
-  // 3) everything else (/sse, /mcp, etc.) proxied to child
+  // Built-in test SSE (proves Render + proxy can stream)
+  if (req.url === "/test-sse") {
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+    });
+    res.write(`event: hello\n`);
+    res.write(`data: connected\n\n`);
+
+    const iv = setInterval(() => {
+      res.write(`data: ${Date.now()}\n\n`);
+    }, 5000);
+
+    req.on("close", () => clearInterval(iv));
+    return;
+  }
+
+  // Everything else (including /sse and /mcp) goes to the child
   proxy.web(req, res);
 });
 
-// WebSocket/SSE upgrade passthrough
+// Upgrade (WS/SSE) pass-through
 server.on("upgrade", (req, socket, head) => {
   proxy.ws(req, socket, head);
 });
@@ -81,7 +115,7 @@ server.listen(PUBLIC_PORT, "0.0.0.0", () => {
   console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`);
 });
 
-// ---------- Graceful shutdown ----------
+// Graceful shutdown
 process.on("SIGTERM", () => {
   try { child.kill("SIGTERM"); } catch {}
   server.close(() => process.exit(0));
