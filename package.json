@@ -1,0 +1,13 @@
+{
+  "name": "clickup-mcp-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "node-fetch": "^3.3.2"
+  },
+  "type": "module"
+}
