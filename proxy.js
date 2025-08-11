@@ -3,44 +3,38 @@ import { spawn } from "child_process";
 import httpProxy from "http-proxy";
 import fetch from "node-fetch";
 
-const INTERNAL_PORT = 10000;                  // where the MCP server will listen (localhost only)
+const INTERNAL_PORT = 10000;                  // MCP listens here on 127.0.0.1
 const PUBLIC_PORT = process.env.PORT || 3000; // Render provides PORT
 const env = { ...process.env, PORT: String(INTERNAL_PORT) };
 
-// 1) Start the ClickUp MCP server as a child process (binds to 127.0.0.1:10000)
-const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
-child.stdout.on("data", d => process.stdout.write(d));
-child.stderr.on("data", d => process.stderr.write(d));
-child.on("exit", code => {
-  console.error("MCP child exited with", code);
-});
-
-  env,
-  stdio: "inherit",
-  shell: false
-});
-
+// sanity print (no secrets)
 console.log("ENV sanity:", {
   HAS_API_KEY: !!env.CLICKUP_API_KEY,
   HAS_TEAM_ID: !!env.CLICKUP_TEAM_ID,
-  ENABLE_SSE: env.ENABLE_SSE
+  ENABLE_SSE: env.ENABLE_SSE,
+  PUBLIC_PORT
 });
 
+// 1) Start the ClickUp MCP server (binds to 127.0.0.1:10000)
+const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
+  env,
+  shell: false
+});
+
+// log child output/errors so we can see why it crashes if it does
+child.stdout.on("data", (d) => process.stdout.write(d));
+child.stderr.on("data", (d) => process.stderr.write(d));
 child.on("exit", (code) => {
-  console.error(`MCP server exited with code ${code}`);
-  process.exit(code || 1);
+  console.error("MCP child exited with", code);
 });
 
-// 2) Create a reverse proxy that binds to 0.0.0.0:$PORT and forwards to 127.0.0.1:10000
+// 2) Reverse proxy on 0.0.0.0:$PORT -> 127.0.0.1:10000
 const proxy = httpProxy.createProxyServer({
   target: `http://127.0.0.1:${INTERNAL_PORT}`,
   changeOrigin: true,
   ws: true
 });
-
-proxy.on("error", (err) => {
-  console.error("Proxy error:", err.message);
-});
+proxy.on("error", (err) => console.error("Proxy error:", err.message));
 
 const server = http.createServer(async (req, res) => {
   if (req.url === "/health") {
@@ -48,7 +42,7 @@ const server = http.createServer(async (req, res) => {
       const r = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/health`);
       res.writeHead(r.status, Object.fromEntries(r.headers));
       res.end(await r.text());
-    } catch (e) {
+    } catch {
       res.writeHead(502, { "content-type": "text/plain" });
       res.end("bad gateway");
     }
@@ -56,14 +50,10 @@ const server = http.createServer(async (req, res) => {
   }
   proxy.web(req, res);
 });
-
-server.on("upgrade", (req, socket, head) => {
-  proxy.ws(req, socket, head);
-});
-
-server.listen(PUBLIC_PORT, "0.0.0.0", () => {
-  console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`);
-});
+server.on("upgrade", (req, socket, head) => proxy.ws(req, socket, head));
+server.listen(PUBLIC_PORT, "0.0.0.0", () =>
+  console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`)
+);
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
