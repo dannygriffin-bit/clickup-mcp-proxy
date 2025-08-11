@@ -60,3 +60,24 @@ server.on("upgrade", (req, socket, head) => proxy.ws(req, socket, head));
 server.listen(PUBLIC_PORT, "0.0.0.0", () =>
   console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`)
 );
+
+// --- Health probe & auto-restart on repeated failures ---
+const HEALTH_URL = `http://127.0.0.1:${INTERNAL_PORT}/health`;
+let failCount = 0;
+const MAX_FAILS = 5;
+
+setInterval(async () => {
+  try {
+    const res = await fetch(HEALTH_URL);
+    const text = await res.text();
+    console.log(`[health probe] status ${res.status}: ${text}`);
+    failCount = 0; // reset on success
+  } catch (err) {
+    failCount += 1;
+    console.error(`[health probe] error: ${err?.message || err} (fail ${failCount}/${MAX_FAILS})`);
+    if (failCount >= MAX_FAILS) {
+      console.error("[health probe] too many failures — exiting to let Render restart the service");
+      process.exit(1);
+    }
+  }
+}, 3000);
