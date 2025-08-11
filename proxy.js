@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import httpProxy from "http-proxy";
 import fetch from "node-fetch";
 
-const INTERNAL_PORT = 10000;
+const INTERNAL_PORT = 3231;
 const PUBLIC_PORT = process.env.PORT || 3000;
 
 const env = {
