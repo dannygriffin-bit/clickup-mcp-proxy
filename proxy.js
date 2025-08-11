@@ -14,6 +14,12 @@ const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@latest"], {
   shell: false
 });
 
+console.log("ENV sanity:", {
+  HAS_API_KEY: !!env.CLICKUP_API_KEY,
+  HAS_TEAM_ID: !!env.CLICKUP_TEAM_ID,
+  ENABLE_SSE: env.ENABLE_SSE
+});
+
 child.on("exit", (code) => {
   console.error(`MCP server exited with code ${code}`);
   process.exit(code || 1);
