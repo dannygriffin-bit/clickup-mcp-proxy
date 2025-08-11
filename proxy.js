@@ -3,7 +3,7 @@ import http from "http";
 import { spawn } from "child_process";
 import httpProxy from "http-proxy";
 
-const INTERNAL_PORT = 10000;                  // child listens here (localhost-only)
+const INTERNAL_PORT = 10000;                   // child (MCP) listens here on localhost
 const PUBLIC_PORT  = process.env.PORT || 3000; // Render injects PORT
 
 console.log("ENV sanity:", {
@@ -13,9 +13,7 @@ console.log("ENV sanity:", {
   PUBLIC_PORT: String(PUBLIC_PORT),
 });
 
-// ---- Start the ClickUp MCP child (the server we're proxying to) ----
-// Using the package's default behavior (which has shown /sse and /mcp)
-// No extra flags; we just pin HOST/PORT in env.
+// ---- Start the ClickUp MCP child (http + sse expected on 127.0.0.1:10000) ----
 console.log("[child] starting ClickUp MCP (taazkareem latest) …");
 const child = spawn(
   "bash",
@@ -31,7 +29,6 @@ const child = spawn(
     shell: false,
   }
 );
-
 child.on("exit", (code) => {
   console.error(`[child] exited with code: ${code}`);
 });
@@ -46,7 +43,7 @@ const proxy = httpProxy.createProxyServer({
 });
 
 proxy.on("error", (err, req, res) => {
-  console.error("Proxy error:", err.message);
+  console.error("Proxy error:", err?.message, "for", req?.url);
   if (res && !res.headersSent) {
     try {
       res.writeHead(502, { "content-type": "text/plain" });
@@ -57,8 +54,11 @@ proxy.on("error", (err, req, res) => {
 
 // ---- Public server (what Render hits) ----
 const server = http.createServer(async (req, res) => {
-  // Tiny landing page so Render's port scan sees something immediately
-  if (req.url === "/") {
+  const url = req.url || "/";
+  console.log("[req]", req.method, url);
+
+  // Home page (helps Render see an immediate HTTP 200)
+  if (url === "/" || url.startsWith("/?")) {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return res.end(`
       <h1>ClickUp MCP Proxy</h1>
@@ -71,45 +71,60 @@ const server = http.createServer(async (req, res) => {
     `);
   }
 
-  // Simple connectivity checks
-  if (req.url === "/ping") {
+  // Quick checks (match even with query strings)
+  if (url.startsWith("/ping")) {
     console.log("[ping] hit");
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end("pong");
   }
 
-  // Always-OK health for Render
-  if (req.url === "/health") {
+  // Always-OK health so Render doesn’t kill us
+  if (url.startsWith("/health")) {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end("ok");
   }
 
-  // Built-in test SSE (proves Render + proxy can stream)
-  if (req.url === "/test-sse") {
+  // Built-in test SSE to prove streaming on Render (no proxy involved)
+  if (url.startsWith("/test-sse")) {
+    console.log("[test-sse] start");
     res.writeHead(200, {
       "content-type": "text/event-stream",
-      "cache-control": "no-cache",
+      "cache-control": "no-cache, no-transform",
       "connection": "keep-alive",
+      "x-accel-buffering": "no",        // tell proxies not to buffer
     });
-    res.write(`event: hello\n`);
-    res.write(`data: connected\n\n`);
+    res.flushHeaders?.();               // send headers immediately if available
+
+    // Initial hello + recommend client retry interval
+    res.write("retry: 10000\n");
+    res.write("event: hello\n");
+    res.write("data: connected\n\n");
 
     const iv = setInterval(() => {
       res.write(`data: ${Date.now()}\n\n`);
     }, 5000);
 
-    req.on("close", () => clearInterval(iv));
-    return;
+    req.on("close", () => {
+      console.log("[test-sse] client closed");
+      clearInterval(iv);
+    });
+    return; // keep the connection open
   }
 
   // Everything else (including /sse and /mcp) goes to the child
   proxy.web(req, res);
 });
 
-// Upgrade (WS/SSE) pass-through
+// Pass-through upgrades (WS); SSE does NOT use this, but safe to keep
 server.on("upgrade", (req, socket, head) => {
+  console.log("[upgrade]", req.url);
   proxy.ws(req, socket, head);
 });
+
+// Be generous with timeouts for streaming
+server.headersTimeout   = 600_000;
+server.keepAliveTimeout = 600_000;
+server.requestTimeout   = 0; // disable request timeout
 
 server.listen(PUBLIC_PORT, "0.0.0.0", () => {
   console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`);
