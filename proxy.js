@@ -46,7 +46,8 @@ const server = http.createServer(async (req, res) => {
       const r = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/health`);
       res.writeHead(r.status, Object.fromEntries(r.headers));
       res.end(await r.text());
-    } catch {
+    } catch (e) {
+      console.error("[health] fetch error:", e?.message || e);
       res.writeHead(502, { "content-type": "text/plain" });
       res.end("bad gateway");
     }
@@ -54,6 +55,7 @@ const server = http.createServer(async (req, res) => {
   }
   proxy.web(req, res);
 });
+
 server.on("upgrade", (req, socket, head) => proxy.ws(req, socket, head));
 server.listen(PUBLIC_PORT, "0.0.0.0", () =>
   console.log(`Proxy listening on 0.0.0.0:${PUBLIC_PORT} → 127.0.0.1:${INTERNAL_PORT}`)
