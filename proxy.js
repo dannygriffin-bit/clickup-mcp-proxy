@@ -16,19 +16,19 @@ console.log("ENV sanity:", {
 
 // ---------------- Start MCP child ----------------
 // Pin to an HTTP/SSE-capable version and force SSE on.
-console.log("[child] starting ClickUp MCP (taazkareem 0.6.1) …");
+console.log("[child] starting ClickUp MCP (taazkareem 0.7.2, http+sse) …");
 const child = spawn(
-  "npx",
-  ["-y", "@taazkareem/clickup-mcp-server@0.6.1"],
+  "bash",
+  ["-lc", "npx -y @taazkareem/clickup-mcp-server@0.7.2 --http --sse"],
   {
     env: {
       ...process.env,
       PORT: String(INTERNAL_PORT),   // child listens on 127.0.0.1:10000
       HOST: "127.0.0.1",
-      ENABLE_SSE: "true",
+      ENABLE_SSE: "true"
     },
     stdio: "inherit",
-    shell: false,
+    shell: false
   }
 );
 
