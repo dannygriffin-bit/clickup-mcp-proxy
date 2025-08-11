@@ -21,10 +21,10 @@ console.log("ENV sanity:", {
 });
 
 // 1) Start the ClickUp MCP server (binds to 127.0.0.1:10000)
-const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
+const child = spawn("npx", ["-y", "@nazruden/clickup-server@latest"], {
   env,
   shell: false,
-  stdio: ["ignore", "pipe", "pipe"] // capture output
+  stdio: ["ignore", "pipe", "pipe"]
 });
 
 // log child output/errors so we can see why it crashes
