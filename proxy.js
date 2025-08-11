@@ -8,7 +8,7 @@ const PUBLIC_PORT = process.env.PORT || 3000; // Render provides PORT
 const env = { ...process.env, PORT: String(INTERNAL_PORT) };
 
 // 1) Start the ClickUp MCP server as a child process (binds to 127.0.0.1:10000)
-const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@latest"], {
+const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
   env,
   stdio: "inherit",
   shell: false
