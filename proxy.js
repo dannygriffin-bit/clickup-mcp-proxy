@@ -3,9 +3,14 @@ import { spawn } from "child_process";
 import httpProxy from "http-proxy";
 import fetch from "node-fetch";
 
-const INTERNAL_PORT = 10000;                  // MCP listens here on 127.0.0.1
+const INTERNAL_PORT = 10000;                  // MCP listens on 127.0.0.1 here
 const PUBLIC_PORT = process.env.PORT || 3000; // Render provides PORT
-const env = { ...process.env, PORT: String(INTERNAL_PORT) };
+const env = {
+  ...process.env,
+  PORT: String(INTERNAL_PORT),                // tell MCP to use INTERNAL_PORT
+  // Optional: extra logging if the package supports it
+  LOG_LEVEL: process.env.LOG_LEVEL || "debug"
+};
 
 // sanity print (no secrets)
 console.log("ENV sanity:", {
@@ -18,10 +23,11 @@ console.log("ENV sanity:", {
 // 1) Start the ClickUp MCP server (binds to 127.0.0.1:10000)
 const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
   env,
-  shell: false
+  shell: false,
+  stdio: ["ignore", "pipe", "pipe"] // capture output
 });
 
-// log child output/errors so we can see why it crashes if it does
+// log child output/errors so we can see why it crashes
 child.stdout.on("data", (d) => process.stdout.write(d));
 child.stderr.on("data", (d) => process.stderr.write(d));
 child.on("exit", (code) => {
