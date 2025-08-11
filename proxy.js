@@ -9,6 +9,12 @@ const env = { ...process.env, PORT: String(INTERNAL_PORT) };
 
 // 1) Start the ClickUp MCP server as a child process (binds to 127.0.0.1:10000)
 const child = spawn("npx", ["-y", "@taazkareem/clickup-mcp-server@0.7.2"], {
+child.stdout.on("data", d => process.stdout.write(d));
+child.stderr.on("data", d => process.stderr.write(d));
+child.on("exit", code => {
+  console.error("MCP child exited with", code);
+});
+
   env,
   stdio: "inherit",
   shell: false
