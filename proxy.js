@@ -24,12 +24,9 @@ console.log("ENV sanity:", {
 console.log("[child] starting taazkareem server…");
 const child = spawn(
   "npx",
-  ["-y", "@taazkareem/clickup-mcp-server@latest"],
-  {
-    env: { ...process.env, PORT: String(INTERNAL_PORT), HOST: "127.0.0.1" },
-    stdio: "inherit",
-    shell: false
-  }
+  ["-y", "@taazkareem/clickup-mcp-server@0.7.2"],   // pin this
+  { env: { ...process.env, PORT: String(INTERNAL_PORT), HOST: "127.0.0.1", ENABLE_SSE: "true" },
+    stdio: "inherit", shell: false }
 );
 
 // If the child exits, just log. We keep the parent alive so /ping still works for debugging.
