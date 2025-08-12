@@ -3,8 +3,5 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "start": "node -e \"console.log('Use Render Start Command, not npm start')\"",
-    "build": "echo skip"
-  }
+  "scripts": { "build": "echo skip" }
 }
