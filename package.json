@@ -2,12 +2,9 @@
   "name": "clickup-mcp-proxy",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "start": "node proxy.js"
-  },
-  "dependencies": {
-    "http-proxy": "^1.18.1",
-    "node-fetch": "^3.3.2"
-  },
-  "type": "module"
+    "start": "node -e \"console.log('Use Render Start Command, not npm start')\"",
+    "build": "echo skip"
+  }
 }
